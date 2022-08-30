@@ -1,0 +1,11 @@
+---
+title: "20220830.analysis"
+author: "4621509 桐原巧"
+date: "8/30/2022"
+output: html_document
+---
+### Rファイルから読み込み
+```{r}
+source("../R/")
+```
+

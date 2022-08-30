@@ -1,0 +1,53 @@
+---
+title: "20220830.analysis"
+author: "4621509 桐原巧"
+date: "8/30/2022"
+output: html_document
+---
+### Rファイルから読み込み
+```{r}
+source("../R/library.R")
+source("../R/fixedvariable.R")
+source("../R/selectdata.R")
+source("../R/cal.q.length.R")
+source("../R/item.leng.count.R")
+#detectする関数
+source("../R/longstring.R")
+source("../R/IRV.R")
+source("../R/mahad.R")
+source("../R/psychsyn.R")
+source("../R/ptc.R")
+       
+```
+### 実験1
+先行研究のIncrease in Social Isolation during the COVID-19 Pandemic and Its Association with Mental Health: Findings from the JACSIS 2020 Studyで使われている変数を用いてC/IE回答者を特定
+
+- Q26,Q40,Q42,Q53,Q54
+- Q62,Q65,Q75
+
+条件分岐する問題
+Q40.3 Q40.13
+```{r}
+#使うデータと長さ
+use.colname=c("Q26","Q40","Q42","Q54","Q62","65","Q75")
+
+#全てのuserIDと問題のデータを保存
+alldata <- cal.naomit(use.colname) 
+#q.length <- cal.q.length(use.colname)
+```
+
+```{r}
+#user_idと問題データに分割する
+user.id <- alldata %>% select(USER_ID)
+qdata <- alldata %>% select(!USER_ID)
+
+#削除した問題を考慮した問題の項目数ベクトル
+item.leng <- item.leng.count(qdata)
+q.length <- cal.q.length(use.colname,colnamedata=item.leng)
+
+#検知方法の適用
+long.result <- longstring(qdata,avg=F,split=T,q.length)
+irv.result <- irv(use.data1,na.rm = TRUE, split = T,q.length)
+mahad.result <- mahad(use.data1, plot = TRUE, flag = TRUE, confidence = 0.99, na.rm = TRUE)
+```
+
