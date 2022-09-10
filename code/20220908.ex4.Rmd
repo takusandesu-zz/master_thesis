@@ -1,0 +1,132 @@
+---
+title: "20220908.ex4"
+author: "4621509 桐原巧"
+date: "9/8/2022"
+output: html_document
+---
+
+### Rファイルから読み込み
+```{r}
+source("../R/library.R")
+source("../R/fixedvariable.R")
+source("../R/selectdata.R")
+source("../R/cal.q.length.R")
+source("../R/item.leng.count.R")
+#detectする関数
+source("../R/longstring.R")
+source("../R/IRV.R")
+source("../R/mahad.R")
+source("../R/psychsyn.R")
+source("../R/ptc.R")
+```
+
+
+### 実験4
+- Jacsisの仕事に関する質問
+Q6とQ7はQ1が1から9までの人に対する問題
+Q19は男性が1から15,18,19で女性が1から17,19について
+Q22はQ1が1から9までの人に対する問題
+Q23は8が分岐
+Q54は1,2,5,6,7,8,9,10
+
+仕事をしている人を対象としている
+```{r}
+#使うデータと長さ
+use.colname=c("Q6.","Q7.","Q19","Q22","Q23","Q54")
+#全てのuserIDと問題のデータを保存
+alldata <- nanoomit(use.colname) 
+alldata <- alldata %>% select(!c(Q19.16,Q19.17,Q19.18,Q23.8,Q23S1.8,Q54.3,Q54.4)) %>% na.omit()
+#q.length <- cal.q.length(use.colname)
+```
+
+
+```{r}
+#user_idと問題データに分割する
+user.id <- alldata %>% select(USER_ID)
+qdata <- alldata %>% select(!USER_ID)
+
+#削除した問題を考慮した問題の項目数ベクトル
+item.leng <- item.leng.count(qdata)
+q.length <- cal.q.length(use.colname,colnamedata=item.leng)
+
+
+#検知方法の適用
+long.result <- longstring(qdata,avg=F,split=T,q.length)
+irv.result <- irv(qdata,na.rm = TRUE, split = T,q.length)
+mahad.result <- mahad(qdata, plot = TRUE, flag = TRUE, confidence = 0.99, na.rm = TRUE)
+psychsyn.result <- as.data.frame(psychsyn(qdata, critval=.60, anto=FALSE, diag=FALSE, resample_na=TRUE)) 
+colnames(psychsyn.result)[1] <- "psychsyn"
+#psychant.result <- psychant(qdata, critval = -0.6, diag = FALSE)
+ptc.result <- ptc(qdata,use.colname,split=FALSE)
+```
+
+### long-string
+```{r}
+#経験的なカットオフ値
+cutoff <- as.integer(q.length/2)
+#カットオフ値と比較してC/IEかどうかの結果を入れるデータ
+output <- t(replicate(nrow(qdata),rep(NA,nrow(item.leng))))
+#totalのlsaの結果を除いた結果
+each.long.result <- long.result %>% select(!lsatotal)
+
+#判別結果をデータに入れる
+for(k in 1:nrow(qdata)){
+  output[k,] <- as.vector(each.long.result[k,] > cutoff)
+}
+
+#user_idと判別結果を持つ
+long.result.inuserid <- output %>% as.data.frame() %>% mutate(t.count=apply(output,1,sum)) %>% mutate(lsa_flag = if_else(t.count>=length(use.colname)-1,TRUE,FALSE)) %>% mutate(user.id = user.id,.before=everything())
+
+table(long.result.inuserid$discrime)
+```
+### IRV
+```{r}
+each.irv.result <- irv.result %>% select(!irvTotal) %>% mutate(avg=apply(.,1,mean))
+
+
+x <- each.irv.result$avg
+qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+caps <- quantile(x, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(x, na.rm = T)
+   
+#最終的な判定
+each.irv.result <- each.irv.result %>% mutate(irv_flag = if_else((avg < (qnt[1] - H) | avg > (qnt[2] + H)),TRUE,FALSE)) %>% mutate(user.id = user.id,.before=everything())  
+#table(x < (qnt[1] - H) | x > (qnt[2] + H))
+#table(x < (qnt[1] - H))
+#plot(density(x))
+```
+
+### mahad
+```{r}
+mahad.result <- mahad.result %>% rename(mahad_flag = flagged)
+```
+
+### psych
+```{r}
+#psychsynの分布
+plot(density(psychsyn.result$psychsyn %>% na.omit()))
+x <- psychsyn.result$psychsyn
+qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+caps <- quantile(x, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(x, na.rm = T)
+
+#最終的な判定
+psychsyn.result <-  psychsyn.result %>%  mutate(psy_flag = (psychsyn<qnt[1] - H)) %>% replace_na(list(psy_flag  = TRUE)) %>% mutate(user.id = user.id,.before=everything())
+
+#table(is.na(psychsyn.result$psychsyn))
+#table(psychsyn.result$psy_flag)
+```
+### ptc
+```{r}
+ptc.result <- ptc.result %>% mutate(ptc_flag=(out<0)) %>% replace_na(list(psy_flag  = TRUE)) %>% mutate(user.id = user.id,.before=everything())
+```
+
+### 全ての指標に対するフラグデータ
+```{r}
+index_flag_data <- data.frame(user.id = user.id,lsa_flag= long.result.inuserid$lsa_flag,irv_flag = each.irv.result$irv_flag,mahad_flag = mahad.result$mahad_flag,psy_flag = psychsyn.result$psy_flag,ptc_flag = ptc.result$ptc_flag)
+
+index_flag_data <- index_flag_data %>% mutate(sum_flag = apply(.[c(2:6)],1,sum))
+
+table(index_flag_data$sum_flag)
+```
+

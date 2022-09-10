@@ -29,7 +29,7 @@ source("../R/ptc.R")
 Q40.3 Q40.13
 ```{r}
 #使うデータと長さ
-use.colname=c("Q26","Q40","Q42","Q54","Q62","65","Q75")
+use.colname=c("Q26","Q40","Q42","Q54","Q62","Q75")
 
 #全てのuserIDと問題のデータを保存
 alldata <- cal.naomit(use.colname) 
@@ -47,7 +47,154 @@ q.length <- cal.q.length(use.colname,colnamedata=item.leng)
 
 #検知方法の適用
 long.result <- longstring(qdata,avg=F,split=T,q.length)
-irv.result <- irv(use.data1,na.rm = TRUE, split = T,q.length)
-mahad.result <- mahad(use.data1, plot = TRUE, flag = TRUE, confidence = 0.99, na.rm = TRUE)
+irv.result <- irv(qdata,na.rm = TRUE, split = T,q.length)
+mahad.result <- mahad(qdata, plot = TRUE, flag = TRUE, confidence = 0.99, na.rm = TRUE)
+psychsyn.result <- psychsyn(qdata, critval=.60, anto=FALSE, diag=FALSE, resample_na=TRUE)
+#psychant.result <- psychant(qdata, critval = -0.6, diag = FALSE)
+ptc.result <- ptc(qdata,use.colname,split=FALSE)
+```
+
+### 回答の分布
+```{r}
+#各問題の基本統計量
+summary_data <- summary(qdata) 
+
+#Q26のデータだけ取り出す
+Q26data <- qdata %>% select(matches("^Q26"))
+
+#Q26の回答の頻度をデータフレームに
+Q26freq <- Q26data %>% apply(2,table) %>% as.data.frame()
+#頻度を分布にしたもの
+apply(Q26freq,2,barplot)
+
+#基本統計量
+basic.staticstics.Q26 <- describe(Q26data)
+
+#相関係数
+cor <- cor(Q26data)
+correlations.Q26 <- stats::cor(Q26data, use = "pairwise.complete.obs")#共分散行列
+#対角線を含めた上三角行列で上側がTRUEとなりそこをNAとする
+correlations.Q26[upper.tri(correlations.Q26,diag=TRUE)] <- NA 
+correlations.Q26 <- as.data.frame(as.table(correlations.Q26)) %>% na.omit()#テーブル型にしてデータ型にする var1 va2 Freq の列 
+```
+
+### longstringの解析の結果
+long.result：全ての項目と各ブロックごとのロングストリングの結果
+output：各ブロックごとのロングストリングの判定結果がある
+- 経験的には、問題の半分以上をC/IEとする
+
+```{r}
+boxplot(long.result)
+#経験的なカットオフ値
+cutoff <- as.integer(q.length/2)
+#カットオフ値と比較してC/IEかどうかの結果を入れるデータ
+output <- t(replicate(nrow(qdata),rep(NA,nrow(item.leng))))
+#totalのlsaの結果を除いた結果
+each.long.result <- long.result %>% select(!lsatotal)
+
+#判別結果をデータに入れる
+for(k in 1:nrow(qdata)){
+  output[k,] <- as.vector(each.long.result[k,] > cutoff)
+}
+
+#user_idと判別結果を持つ
+long.result.inuserid <- output %>% as.data.frame() %>% mutate(count.t=apply(output,1,sum)) %>% mutate(discrime = if_else(count.t>=5,TRUE,FALSE)) %>% mutate(user.id = user.id,.before=V1)
+
+
+#判別された数
+apply(output,2,table)
+
+#
+long.result %>% select(!lsatotal) %>% apply(2,hist)
+```
+### mahad
+```{r}
+mahad.result.inuserid <- mahad.result %>%  mutate(user.id=user.id,.before=d_sq)
+```
+
+
+### IRV
+- カットオフ値は定められていない
+```{r}
+boxplot(irv.result)
+irv.result %>%  apply(2,hist)
+
+
+each.irv.result <- irv.result %>% select(!irvTotal)
+
+quantile.1per <- function(data){
+  return(quantile(c(0.01,0.09)))
+}
+
+quantile(each.irv.result$irv3,c(0.11,0.90))
+
+quantile.1per(each.irv.result$irv3)
+
+each.irv.result %>% apply(2,quantile.1per)
+
+irv.result$irvTotal
+
+```
+
+### psychsyn
+```{r}
+output.psy <- t(replicate(nrow(Q26data), rep(NA,ncol(Q26data))))
+
+psychsyn.result <- as.data.frame(psychsyn.result) %>% mutate(flag = if_else(psychsyn.result>=0,T,F))
+psychsyn.result[psychsyn.result>=0] <- TRUE
+psychsyn.result[psychsyn.result<0] <- FALSE
+psychsyn.crit <- psychsyn_critval(qdata,anto=F)
+
+boxplot(psychsyn.result$psychsyn.result)
+plot(density(psychsyn.result$psychsyn%>% na.omit))
+hist(psychsyn.result$psychsyn)
+
+```
+
+### ptc
+```{r}
+ptc.result <- ptc.result %>% mutate(flag = if_else(out>=0,F,T))
+table(ptc.result$flag)
+plot(density(ptc.result$out %>% na.omit))
+hist(ptc.result$out)
+```
+```{r}
+remove.outliers <- function(x, conf.level = 0.95)
+{
+  x <- x[!is.na(x)]
+  del.val <- NULL
+  
+  while (TRUE) {
+    n <- length(x)
+    if (n < 3) {
+      break
+    }
+    
+    r <- range(x)
+    t <- abs(r - mean(x)) / sd(x)
+    q2 <- (n - 2) / ((n - 1) ^ 2 / t ^ 2 / n - 1)
+    q2[q2 < 0] <- 0
+    q <- sqrt(q2)
+    p <- n * pt(q, n - 2, lower.tail = FALSE)
+    
+    if (t[1] < t[2]) {
+      if (p[2] < 1 - conf.level) {
+        del.val <- c(del.val, r[2])
+        x <- x[x != r[2]]
+        next
+      }
+    } else {
+      if (p[1] < 1 - conf.level) {
+        del.val <- c(del.val, r[1])
+        x <- x[x != r[1]]
+        next
+      }
+    }
+    break
+  }
+  return(list(x = x, del.val = del.val))
+}
+
+remove.outliers(irv.result$irv6,conf.level = 0.95)
 ```
 

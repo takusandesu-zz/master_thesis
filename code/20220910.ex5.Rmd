@@ -1,0 +1,21 @@
+---
+title: "20220910.ex5"
+author: "4621509 桐原巧"
+date: "9/10/2022"
+output: html_document
+---
+Q17,Q18は全員答えている
+Q19は男性が1から15,18,19で女性が1から17,19について
+Q27は15,17以外は全員答える
+Q75は全員
+
+```{r}
+#使うデータの長さ
+use.colname=c("Q17.","Q18.","Q19","Q27","Q75")
+#全てのuserIDと問題のデータを保存
+alldata <- nanoomit(use.colname) 
+alldata <- alldata %>% select(!c(Q27.15,Q19.16,Q19.17,Q19.18,Q27.17)) %>% na.omit()
+
+alldata %>% apply(2,anyNA) %>% !.
+```
+
